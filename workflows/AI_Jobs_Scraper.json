@@ -1,0 +1,1099 @@
+{
+  "name": "AI Jobs - Scraper",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "46fbdb98-d669-4e39-b7b1-1f33ab4223fa",
+              "name": "googleSheetId",
+              "value": "YOUR_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "539e9a88-5759-4d05-bf6f-890ad4751896",
+              "name": "sheetName",
+              "value": "Apify - http scraper - jobs.ge",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4e690043-b519-4445-b470-ccc94ecccc5b",
+      "name": "Config6",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1200,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorSource": "store",
+        "actorId": {
+          "__rl": true,
+          "value": "https://console.apify.com/actors/YrQuEkowkNCLdk4j2/input",
+          "mode": "url"
+        },
+        "customBody": "{\n    \"debugLog\": false,\n    \"excludes\": [\n        {\n            \"glob\": \"\"\n        }\n    ],\n    \"forceResponseEncoding\": true,\n    \"maxRequestsPerCrawl\": 3,\n    \"responseEncoding\": \"utf8\",\n    \"globs\": [\n        {\n            \"glob\": \"\"\n        }\n    ],\n    \"ignoreSslErrors\": false,\n    \"keepUrlFragments\": false,\n    \"linkSelector\": \"a[href*='page=']\",\n    \"pageFunction\": \"async function pageFunction(context) {\\n    const { $, request, log } = context;\\n    const jobs = [];\\n\\n    const CUTOFF_DAYS = 1;\\n    const now = new Date();\\n    const cutoffDate = new Date(now.getTime() - CUTOFF_DAYS * 24 * 60 * 60 * 1000);\\n\\n    const CATEGORY_MAP = {\\n        '1': 'Administration/Management',\\n        '2': 'Finance, Statistics',\\n        '3': 'Sales/Procurement',\\n        '4': 'PR/Marketing',\\n        '5': 'General Technical Staff',\\n        '19': 'Logistics/Transport/Distribution',\\n        '11': 'Construction/Repair',\\n        '10': 'Cleaning',\\n        '9': 'Security/Safety',\\n        '6': 'IT/Programming',\\n        '17': 'Media/Publishing',\\n        '8': 'Education',\\n        '13': 'Law',\\n        '7': 'Medicine/Pharmacy',\\n        '20': 'Beauty/Fashion',\\n        '18': 'Food',\\n        '16': 'Other',\\n    };\\n\\n    const cidMatch = request.url.match(/[?&]cid=(\\\\d+)/);\\n    const jobCategory = cidMatch ? (CATEGORY_MAP[cidMatch[1]] || `Unknown (cid=${cidMatch[1]})`) : null;\\n\\n    function parseJobsGeDate(text) {\\n        if (!text) return null;\\n        const months = {\\n            იანვარი: 0, თებერვალი: 1, მარტი: 2, აპრილი: 3, მაისი: 4, ივნისი: 5,\\n            ივლისი: 6, აგვისტო: 7, სექტემბერი: 8, ოქტომბერი: 9, ნოემბერი: 10, დეკემბერი: 11,\\n            January: 0, February: 1, March: 2, April: 3, May: 4, June: 5,\\n            July: 6, August: 7, September: 8, October: 9, November: 10, December: 11,\\n        };\\n        const match = text.trim().match(/^(\\\\d{1,2})\\\\s+(\\\\S+)$/);\\n        if (!match) return null;\\n        const day = parseInt(match[1], 10);\\n        const month = months[match[2]];\\n        if (month === undefined) return null;\\n\\n        let year = now.getFullYear();\\n        let d = new Date(year, month, day);\\n        if (d.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {\\n            d = new Date(year - 1, month, day);\\n        }\\n        return d;\\n    }\\n\\n    let oldestJobOnPageIsTooOld = false;\\n\\n    $('table tr').each((i, el) => {\\n        const link = $(el).find(\\\"a[href*='view=jobs&id=']\\\").first();\\n        const href = link.attr('href');\\n        if (!href) return;\\n\\n        const idMatch = href.match(/id=(\\\\d+)/);\\n        const jobId = idMatch ? idMatch[1] : null;\\n        if (!jobId) return;\\n\\n        const title = link.clone().children().remove().end().text().trim();\\n\\n        const companyLink = $(el).find(\\\"a[href*='view=client']\\\").last();\\n        const company = companyLink.text().trim();\\n        const companyUrl = companyLink.attr('href')\\n            ? 'https://jobs.ge' + companyLink.attr('href')\\n            : null;\\n\\n        // Find date-like cells by pattern instead of fixed index,\\n        // since row structure (extra logo cells etc.) isn't uniform\\n        const cells = $(el).find('td');\\n        const dateTexts = [];\\n        cells.each((j, cell) => {\\n            const text = $(cell).text().trim();\\n            if (/^\\\\d{1,2}\\\\s+\\\\S+$/.test(text) && text.length < 25) {\\n                dateTexts.push(text);\\n            }\\n        });\\n        const postedDateText = dateTexts[0] || '';\\n        const deadlineDate = dateTexts[1] || '';\\n\\n        const postedDateParsed = parseJobsGeDate(postedDateText);\\n\\n        if (postedDateParsed && postedDateParsed < cutoffDate) {\\n            oldestJobOnPageIsTooOld = true;\\n            return;\\n        }\\n\\n        jobs.push({\\n            job_id: jobId,\\n            url: 'https://jobs.ge/en/?view=jobs&id=' + jobId,\\n            title,\\n            company,\\n            company_url: companyUrl,\\n            job_category: jobCategory,\\n            posted_date: postedDateText,\\n            deadline_date: deadlineDate,\\n            scraped_at: new Date().toISOString(),\\n        });\\n    });\\n\\n    if (oldestJobOnPageIsTooOld) {\\n        log.info(`Reached jobs older than ${CUTOFF_DAYS} days on ${request.url} — later pages will be skipped by the crawler's own page limit.`);\\n    }\\n\\n    return jobs;\\n}\",\n    \"postNavigationHooks\": \"// We need to return array of (possibly async) functions here.\\n// The functions accept a single argument: the \\\"crawlingContext\\\" object.\\n[\\n    async (crawlingContext) => {\\n        // ...\\n    },\\n]\",\n    \"preNavigationHooks\": \"// We need to return array of (possibly async) functions here.\\n// The functions accept two arguments: the \\\"crawlingContext\\\" object\\n// and \\\"requestAsBrowserOptions\\\" which are passed to the `requestAsBrowser()`\\n// function the crawler calls to navigate..\\n[\\n    async (crawlingContext, requestAsBrowserOptions) => {\\n        // ...\\n    }\\n]\",\n    \"proxyConfiguration\": {\n        \"useApifyProxy\": true\n    },\n    \"pseudoUrls\": [\n        {\n            \"purl\": \"https://jobs.ge/ge/?page=[\\\\d+]&q=&cid=6&lid=&jid=\"\n        }\n    ],\n    \"respectRobotsTxtFile\": true,\n    \"startUrls\": [\n        {\n            \"url\": \"https://jobs.ge/ge/?page=1&q=&cid=6&lid=&jid=\"\n        }\n    ]\n}"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        -976,
+        -96
+      ],
+      "id": "729ca780-0cb1-4c57-aa92-de1898677054",
+      "name": "Jobs.ge HTTP Scraper",
+      "credentials": {
+        "apifyApi": {
+          "id": "YOUR_APIFY_CREDENTIAL_ID",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "46fbdb98-d669-4e39-b7b1-1f33ab4223fa",
+              "name": "googleSheetId",
+              "value": "YOUR_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "539e9a88-5759-4d05-bf6f-890ad4751896",
+              "name": "sheetName",
+              "value": "Apify 4 - Multi Job Board",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "327adbf6-51a3-4ca4-bc2f-ffa96c722003",
+      "name": "Config1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1200,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "46fbdb98-d669-4e39-b7b1-1f33ab4223fa",
+              "name": "googleSheetId",
+              "value": "YOUR_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "539e9a88-5759-4d05-bf6f-890ad4751896",
+              "name": "sheetName",
+              "value": "Apify 5 - Himalayas",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1ca28ee8-8846-4b5f-9789-0b037c8a8b8d",
+      "name": "Config2",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1200,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorSource": "store",
+        "actorId": {
+          "__rl": true,
+          "value": "https://console.apify.com/actors/XdmhliX4pINUagGlf/input",
+          "mode": "url"
+        },
+        "customBody": "{\n    \"filterNonTech\": false,\n    \"keywords\": [\n        \"Product\",\n        \"CTO\",\n        \"Wordpress\"\n    ],\n    \"maxResultsPerKeyword\": 17,\n    \"worldwide\": true\n}"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        -976,
+        96
+      ],
+      "id": "bd8ae166-f211-4476-a04a-ff5898248ab7",
+      "name": "Himalayas",
+      "credentials": {
+        "apifyApi": {
+          "id": "YOUR_APIFY_CREDENTIAL_ID",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorSource": "store",
+        "actorId": {
+          "__rl": true,
+          "value": "https://console.apify.com/actors/2rJKkhh7vjpX7pvjg/input",
+          "mode": "url"
+        },
+        "customBody": "{\n    \"distance\": \"50\",\n    \"enrichCompanyData\": false,\n    \"excludeRecruitingAgencies\": false,\n    \"filterEasyApply\": false,\n    \"filterUnder10Applicants\": false,\n    \"keyword\": [\n        \"Product manager\"\n    ],\n    \"maxItems\": 50,\n    \"publishedAt\": \"r86400\",\n    \"requireRecruiterProfile\": false,\n    \"requireSalaryInfo\": false,\n    \"resumeKeywords\": [\n        {\n            \"aliases\": [\n                \"TS\",\n                \"JS\",\n                \"JavaScript\"\n            ],\n            \"keyword\": \"TypeScript\"\n        },\n        {\n            \"aliases\": [\n                \"Node\",\n                \"NodeJS\"\n            ],\n            \"keyword\": \"Node.js\"\n        },\n        {\n            \"aliases\": [\n                \"RN\",\n                \"React Native\",\n                \"Expo\",\n                \"ReactJS\"\n            ],\n            \"keyword\": \"React\"\n        },\n        {\n            \"aliases\": [\n                \"PostgreSQL\"\n            ],\n            \"keyword\": \"SQL\"\n        },\n        {\n            \"aliases\": [\n                \"Git\",\n                \"Docker\",\n                \"Jira\",\n                \"Postman\",\n                \"GitHub\",\n                \"GitLab\",\n                \"GitHub Copilot\",\n                \"Webpack\"\n            ],\n            \"keyword\": \"Tools\"\n        }\n    ],\n    \"saveOnlyUniqueItems\": true,\n    \"startUrls\": [\n        {\n            \"url\": \"https://www.linkedin.com/jobs/search/?f_TPR=r86400&geoId=106315325&keywords=product\"\n        }\n    ]\n}"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        -976,
+        -288
+      ],
+      "id": "c4bed16e-3e55-4eda-bf44-2e9dbd255987",
+      "name": "Linkedin - cheap_scraper/linkedin-job-scraper",
+      "credentials": {
+        "apifyApi": {
+          "id": "YOUR_APIFY_CREDENTIAL_ID",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "46fbdb98-d669-4e39-b7b1-1f33ab4223fa",
+              "name": "googleSheetId",
+              "value": "YOUR_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "539e9a88-5759-4d05-bf6f-890ad4751896",
+              "name": "sheetName",
+              "value": "Apify 7 - cheap_scraper/linkedin-job-scraper",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "285dc8e7-5de6-4337-889e-ebb6ad8a83ce",
+      "name": "Config5",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1200,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "16eb1766-fc8d-4f5e-9525-8502d510cbfa",
+      "name": "Read Existing Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        144,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorSource": "store",
+        "actorId": {
+          "__rl": true,
+          "value": "https://console.apify.com/actors/YrQuEkowkNCLdk4j2/input",
+          "mode": "url"
+        },
+        "customBody": "={\n  \"startUrls\": {{ JSON.stringify($json.startUrls) }},\n  \"proxyConfiguration\": { \"useApifyProxy\": true },\n  \"respectRobotsTxtFile\": true,\n  \"pageFunction\": \"async function pageFunction(context) {\\n    const { $, request } = context;\\n\\n    const idMatch = request.url.match(/id=(\\\\d+)/);\\n    const jobId = idMatch ? idMatch[1] : null;\\n\\n    let contentCell = $('table.dtable td[style*=\\\"padding-top\\\"]').first();\\n\\n    if (contentCell.length === 0) {\\n        let maxLen = 0;\\n        $('table.dtable td').each((i, el) => {\\n            const len = $(el).text().trim().length;\\n            if (len > maxLen) {\\n                maxLen = len;\\n                contentCell = $(el);\\n            }\\n        });\\n    }\\n\\n    const externalLink = contentCell.find('a[href^=\\\"http\\\"]').first();\\n    const externalApplyUrl = externalLink.attr('href') || null;\\n    const description = contentCell.text().replace(/\\\\s+/g, ' ').trim();\\n\\n    return [{\\n        job_id: 'jobsge-' + jobId,\\n        description: description,\\n        has_stub_only: !!externalApplyUrl && description.length < 300,\\n        external_apply_url: externalApplyUrl,\\n        scraped_at: new Date().toISOString()\\n    }];\\n}\"\n}"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        816,
+        0
+      ],
+      "id": "5d464d0b-1981-42be-aac4-4be3afa1d6a4",
+      "name": "Jobs.ge Description Scraper",
+      "credentials": {
+        "apifyApi": {
+          "id": "YOUR_APIFY_CREDENTIAL_ID",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config7').item.json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs Database",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_url",
+              "displayName": "company_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "job_type",
+              "displayName": "job_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "is_remote",
+              "displayName": "is_remote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "posted_date",
+              "displayName": "posted_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_min",
+              "displayName": "salary_min",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_max",
+              "displayName": "salary_max",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_currency",
+              "displayName": "salary_currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "external_apply_url",
+              "displayName": "external_apply_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scraped_at",
+              "displayName": "scraped_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "has_stub_only",
+              "displayName": "has_stub_only",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "#error",
+              "displayName": "#error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "#debug",
+              "displayName": "#debug",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scraper",
+              "displayName": "scraper",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "deadline_date",
+              "displayName": "deadline_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "rank",
+              "displayName": "rank",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "shouldApply",
+              "displayName": "shouldApply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "domainMatch",
+              "displayName": "domainMatch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "whyFit",
+              "displayName": "whyFit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "blockingGaps",
+              "displayName": "blockingGaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "learnableGaps",
+              "displayName": "learnableGaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "salaryRecommendation",
+              "displayName": "salaryRecommendation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "salaryReasoning",
+              "displayName": "salaryReasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "analyzedDate",
+              "displayName": "analyzedDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cvUsed",
+              "displayName": "cvUsed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cvChoiceReasoning",
+              "displayName": "cvChoiceReasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "salaryNote",
+              "displayName": "salaryNote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "46f83c41-a2c8-409c-9632-4f937dd9a415",
+      "name": "Update Descriptions in Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-sheet-id",
+              "name": "googleSheetId",
+              "value": "YOUR_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "cfg-sheet-name",
+              "name": "sheetName",
+              "value": "Jobs Database",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c215ad1e-2fe5-43fd-8cb8-7458cecc39a1",
+      "name": "Config7",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function formatDate(d) {\n  if (!d || isNaN(d.getTime())) return '';\n  const pad = n => String(n).padStart(2, '0');\n  return `'${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;\n}\n\nfunction parseJobsGeDate(text) {\n  if (!text) return null;\n  const months = { '\\u10D8\\u10D0\\u10DC\\u10D5\\u10D0\\u10E0\\u10D8': 0, '\\u10D7\\u10D4\\u10D1\\u10D4\\u10E0\\u10D5\\u10D0\\u10DA\\u10D8': 1, '\\u10DB\\u10D0\\u10E0\\u10E2\\u10D8': 2, '\\u10D0\\u10DE\\u10E0\\u10D8\\u10DA\\u10D8': 3, '\\u10DB\\u10D0\\u10D8\\u10E1\\u10D8': 4, '\\u10D8\\u10D5\\u10DC\\u10D8\\u10E1\\u10D8': 5, '\\u10D8\\u10D5\\u10DA\\u10D8\\u10E1\\u10D8': 6, '\\u10D0\\u10D2\\u10D5\\u10D8\\u10E1\\u10E2\\u10DD': 7, '\\u10E1\\u10D4\\u10E5\\u10E2\\u10D4\\u10DB\\u10D1\\u10D4\\u10E0\\u10D8': 8, '\\u10DD\\u10E5\\u10E2\\u10DD\\u10DB\\u10D1\\u10D4\\u10E0\\u10D8': 9, '\\u10DC\\u10DD\\u10D4\\u10DB\\u10D1\\u10D4\\u10E0\\u10D8': 10, '\\u10D3\\u10D4\\u10D9\\u10D4\\u10DB\\u10D1\\u10D4\\u10E0\\u10D8': 11, January: 0, February: 1, March: 2, April: 3, May: 4, June: 5, July: 6, August: 7, September: 8, October: 9, November: 10, December: 11 };\n  const m = text.trim().match(/^(\\d{1,2})\\s+(\\S+)$/);\n  if (!m) return null;\n  const day = parseInt(m[1], 10);\n  const month = months[m[2]];\n  if (month === undefined) return null;\n  const now = new Date();\n  let year = now.getFullYear();\n  let d = new Date(year, month, day);\n  if (d.getTime() > now.getTime() + 24 * 60 * 60 * 1000) d = new Date(year - 1, month, day);\n  return d;\n}\n\nreturn $input.all().map(item => {\n  const d = item.json;\n  return { json: {\n    job_id: `jobsge-${d.job_id}`,\n    source: 'jobs.ge',\n    scraper: 'jobs-ge-scraper',\n    title: d.title || '',\n    company: d.company || '',\n    location: 'Georgia',\n    category: d.job_category || '',\n    url: d.url || '',\n    company_url: d.company_url || '',\n    job_type: '',\n    is_remote: '',\n    posted_date: formatDate(parseJobsGeDate(d.posted_date)),\n    deadline_date: formatDate(parseJobsGeDate(d.deadline_date)),\n    salary_min: '',\n    salary_max: '',\n    salary_currency: '',\n    description: '',\n    external_apply_url: '',\n    scraped_at: d.scraped_at || new Date().toISOString(),\n  }};\n});"
+      },
+      "id": "n1a1a1a1-0001-4a1a-8a1a-000000000001",
+      "name": "Normalize - Jobs.ge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function formatDate(d) {\n  if (!d || isNaN(d.getTime())) return '';\n  const pad = n => String(n).padStart(2, '0');\n  return `'${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;\n}\n\nreturn $input.all().map(item => {\n  const d = item.json;\n  const parsedDate = d.date_posted ? new Date(d.date_posted) : null;\n  return { json: {\n    job_id: `${d.site || 'multiboard'}-${d.id}`,\n    source: d.site || 'multi-job-board',\n    scraper: 'multi-job-board',\n    title: d.title || '',\n    company: d.company || '',\n    location: d.location || '',\n    category: '',\n    url: d.job_url || d.job_url_direct || '',\n    company_url: d.company_url || d.company_url_direct || '',\n    job_type: d.job_type || '',\n    is_remote: d.is_remote === true ? 'true' : (d.is_remote === false ? 'false' : ''),\n    posted_date: formatDate(parsedDate),\n    deadline_date: '',\n    salary_min: d.salary_min ?? '',\n    salary_max: d.salary_max ?? '',\n    salary_currency: d.salary_currency || '',\n    description: d.description || '',\n    external_apply_url: d.job_url_direct || '',\n    scraped_at: d.scraped_at || new Date().toISOString(),\n  }};\n});"
+      },
+      "id": "n1a1a1a1-0002-4a1a-8a1a-000000000002",
+      "name": "Normalize - Multi Board",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function formatDate(d) {\n  if (!d || isNaN(d.getTime())) return '';\n  const pad = n => String(n).padStart(2, '0');\n  return `'${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;\n}\n\nreturn $input.all().map(item => {\n  const d = item.json;\n  const marketsStr = Array.isArray(d.markets) ? d.markets.join(', ') : (d.markets || '');\n  const parsedDate = d.posted_at ? new Date(d.posted_at) : null;\n  const isRemote = d.work_mode ? /remote/i.test(d.work_mode) : '';\n  return { json: {\n    job_id: `himalayas-${d.id}`,\n    source: 'himalayas',\n    scraper: 'himalayas',\n    title: d.title || '',\n    company: d.company_name || '',\n    location: d.location || marketsStr || '',\n    category: '',\n    url: d.source_url || d.apply_url || '',\n    company_url: d.company_url || '',\n    job_type: d.type || '',\n    is_remote: isRemote === '' ? '' : (isRemote ? 'true' : 'false'),\n    posted_date: formatDate(parsedDate),\n    deadline_date: '',\n    salary_min: d.salary_min ?? '',\n    salary_max: d.salary_max ?? '',\n    salary_currency: d.currency || '',\n    description: d.description || '',\n    external_apply_url: d.apply_url || '',\n    scraped_at: d.scraped_at || new Date().toISOString(),\n  }};\n});"
+      },
+      "id": "n1a1a1a1-0003-4a1a-8a1a-000000000003",
+      "name": "Normalize - Himalayas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function formatDate(d) {\n  if (!d || isNaN(d.getTime())) return '';\n  const pad = n => String(n).padStart(2, '0');\n  return `'${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;\n}\n\nfunction parseRelative(text, anchor) {\n  if (!text || typeof text !== 'string') return null;\n  const m = text.match(/(\\d+)\\s*(minute|hour|day|week|month)s?\\s*ago/i);\n  if (!m) return null;\n  const n = parseInt(m[1], 10);\n  const unit = m[2].toLowerCase();\n  const d = new Date(anchor.getTime());\n  if (unit === 'minute') d.setMinutes(d.getMinutes() - n);\n  else if (unit === 'hour') d.setHours(d.getHours() - n);\n  else if (unit === 'day') d.setDate(d.getDate() - n);\n  else if (unit === 'week') d.setDate(d.getDate() - n * 7);\n  else if (unit === 'month') d.setMonth(d.getMonth() - n);\n  return d;\n}\n\nfunction salaryInfoToText(raw) {\n  if (!raw) return '';\n  if (typeof raw === 'string') return raw;\n  if (Array.isArray(raw)) {\n    return raw.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ');\n  }\n  if (typeof raw === 'object') return JSON.stringify(raw);\n  return String(raw);\n}\n\nfunction parseSalary(rawText) {\n  const text = salaryInfoToText(rawText);\n  if (!text) return { min: '', max: '', currency: '' };\n  let currency = '';\n  const cm = text.match(/(\\$|USD|EUR|GBP|GEL)/i);\n  if (cm) {\n    const map = { '$': 'USD' };\n    currency = map[cm[1]] || cm[1].toUpperCase();\n  }\n  const nums = text.match(/[\\d,]+(?:\\.\\d+)?/g);\n  if (!nums || nums.length === 0) return { min: '', max: '', currency };\n  const isK = /k\\b/i.test(text);\n  const parsed = nums.map(n => {\n    const v = parseFloat(n.replace(/,/g, ''));\n    return isK ? v * 1000 : v;\n  });\n  if (parsed.length === 1) return { min: parsed[0], max: parsed[0], currency };\n  return { min: Math.min(...parsed), max: Math.max(...parsed), currency };\n}\n\nreturn $input.all().map(item => {\n  const d = item.json;\n  const scrapedAt = new Date();\n  let parsedDate = d.publishedAt ? new Date(d.publishedAt) : null;\n  if (!parsedDate || isNaN(parsedDate.getTime())) parsedDate = parseRelative(d.postedTime, scrapedAt);\n  const sal = parseSalary(d.salaryInfo);\n  const workTypeRemote = d.workType ? /remote/i.test(d.workType) : '';\n  return { json: {\n    job_id: `linkedin-${d.jobId}`,\n    source: 'linkedin',\n    scraper: 'linkedin-cheap-scraper',\n    title: d.jobTitle || '',\n    company: d.companyName || '',\n    location: d.location || '',\n    category: '',\n    url: d.jobUrl || '',\n    company_url: d.companyUrl || '',\n    job_type: d.contractType || d.workType || '',\n    is_remote: workTypeRemote === '' ? '' : (workTypeRemote ? 'true' : 'false'),\n    posted_date: formatDate(parsedDate),\n    deadline_date: '',\n    salary_min: sal.min,\n    salary_max: sal.max,\n    salary_currency: sal.currency,\n    description: d.jobDescription || '',\n    external_apply_url: d.applyUrl || '',\n    scraped_at: scrapedAt.toISOString(),\n  }};\n});"
+      },
+      "id": "n1a1a1a1-0004-4a1a-8a1a-000000000004",
+      "name": "Normalize - LinkedIn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs Database",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "n1a1a1a1-0005-4a1a-8a1a-000000000005",
+      "name": "Write - Unified Jobs Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -304,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process all jobs.ge rows that don't have a description yet.\nconst BATCH_LIMIT = 50; // safety cap per run so a huge backlog doesn't overload one execution\n\nconst items = $input.all();\n\nconst needsDescription = items.filter(item => {\n  const isJobsGe = item.json.source === 'jobs.ge';\n  const hasId = !!item.json.job_id;\n  const alreadyHasDescription = item.json.description && item.json.description.toString().trim().length > 0;\n  return isJobsGe && hasId && !alreadyHasDescription;\n});\n\nconst toProcess = needsDescription.slice(0, BATCH_LIMIT);\n\nconst startUrls = toProcess.map(item => {\n  const rawId = item.json.job_id.toString().replace(/^jobsge-/, '');\n  return { url: `https://jobs.ge/ge/?view=jobs&id=${rawId}` };\n});\n\nreturn [{ json: { startUrls, count: startUrls.length, totalPending: needsDescription.length } }];"
+      },
+      "id": "4a68fed3-8980-46b3-b651-caef23255e31",
+      "name": "Jobs.ge Enricher",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorSource": "store",
+        "actorId": {
+          "__rl": true,
+          "value": "https://console.apify.com/actors/HzvpqlBISk1PaUKJ3/input",
+          "mode": "url"
+        },
+        "customBody": "{\n  \"descriptionHtml\": false,\n  \"easyApply\": false,\n  \"enforceAnnualSalary\": false,\n  \"excludeAgencies\": false,\n  \"includeCompanyDetails\": false,\n  \"isRemote\": false,\n  \"linkedinFetchDescription\": true,\n\n  \"locations\": [\n    \"Tbilisi, Georgia\",\n    \"Batumi, Georgia\",\n    \"Kutaisi, Georgia\"\n  ],\n\n  \"countryIndeed\": \"georgia\",\n\n  \"maxAgeDays\": 1,\n  \"maxResults\": 50,\n  \"onlyNewJobs\": true,\n\n  \"proxyConfiguration\": {\n    \"useApifyProxy\": true\n  },\n\n  \"requireSalary\": false,\n  \"searchTerm\": \"product manager\",\n\n  \"sites\": [\n    \"linkedin\",\n    \"indeed\",\n    \"glassdoor\",\n    \"muse\"\n  ],\n\n  \"sortBy\": \"date_desc\",\n  \"strictKeywordMatch\": false\n}"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        -976,
+        288
+      ],
+      "id": "3bc25255-7a4c-44a1-a16f-7a143f0e6e31",
+      "name": "Multi Job Board Scraper",
+      "credentials": {
+        "apifyApi": {
+          "id": "YOUR_APIFY_CREDENTIAL_ID",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-count-gt-0",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "gate1111-2222-3333-4444-555566667777",
+      "name": "Has Jobs.ge Rows To Enrich?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        592,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1424,
+        0
+      ],
+      "id": "da3bda05-947c-432a-bd6c-d9afc471539e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "id": "merge1111-2222-3333-4444-555566667788",
+      "name": "Merge All Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -512,
+        -32
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Config6": {
+      "main": [
+        [
+          {
+            "node": "Jobs.ge HTTP Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs.ge HTTP Scraper": {
+      "main": [
+        [
+          {
+            "node": "Normalize - Jobs.ge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize - Jobs.ge": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config1": {
+      "main": [
+        [
+          {
+            "node": "Multi Job Board Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize - Multi Board": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Config2": {
+      "main": [
+        [
+          {
+            "node": "Himalayas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Himalayas": {
+      "main": [
+        [
+          {
+            "node": "Normalize - Himalayas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize - Himalayas": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Config5": {
+      "main": [
+        [
+          {
+            "node": "Linkedin - cheap_scraper/linkedin-job-scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Linkedin - cheap_scraper/linkedin-job-scraper": {
+      "main": [
+        [
+          {
+            "node": "Normalize - LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize - LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Write - Unified Jobs Sheet": {
+      "main": [
+        [
+          {
+            "node": "Config7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config7": {
+      "main": [
+        [
+          {
+            "node": "Read Existing Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Existing Rows": {
+      "main": [
+        [
+          {
+            "node": "Jobs.ge Enricher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs.ge Description Scraper": {
+      "main": [
+        [
+          {
+            "node": "Update Descriptions in Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs.ge Enricher": {
+      "main": [
+        [
+          {
+            "node": "Has Jobs.ge Rows To Enrich?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Multi Job Board Scraper": {
+      "main": [
+        [
+          {
+            "node": "Normalize - Multi Board",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Jobs.ge Rows To Enrich?": {
+      "main": [
+        [
+          {
+            "node": "Jobs.ge Description Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config5",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config6",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Sources": {
+      "main": [
+        [
+          {
+            "node": "Write - Unified Jobs Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "5lHYV4B3EjLMHsBv",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "bf35db1f-9dd7-4df0-a28e-e83debb1ea75",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f380a8a022c76f65f94bb32a318b6a019b108f6ad7a5c76cfee2d802fb4379a2"
+  },
+  "nodeGroups": [],
+  "id": "HzyLYd79cIp05MWW",
+  "tags": []
+}

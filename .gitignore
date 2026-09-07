@@ -1,0 +1,10 @@
+# Personal/working files not meant for this repo
+*.docx
+*.pdf
+*.xlsx
+raw_exports/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

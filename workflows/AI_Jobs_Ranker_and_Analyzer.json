@@ -1,0 +1,1121 @@
+{
+  "name": "AI Jobs Ranker & Analyzer",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2224,
+        -1792
+      ],
+      "id": "trigger-1",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "YOUR_CV_1_DRIVE_FILE_ID",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1776,
+        -1168
+      ],
+      "id": "download-cv-1",
+      "name": "Download CV 1 (Google Drive)",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1552,
+        -1168
+      ],
+      "id": "extract-cv-1",
+      "name": "Extract CV 1 Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert resume analyst. Extract a clean, structured profile from the CV text below.\n\nRespond ONLY with valid JSON — no markdown code fences, no commentary before or after. If a field is not present in the CV, use null (or an empty array for list fields). Escape any quotation marks inside string values with a backslash.\n\nSchema to follow exactly:\n{\n  \"name\": \"<candidate full name>\",\n  \"currentRole\": \"<most recent job title>\",\n  \"yearsExperience\": <total years of relevant professional experience, as a number>,\n  \"field\": \"<primary professional field/industry, e.g. 'Software Engineering', 'Marketing', 'Finance'>\",\n  \"primarySkills\": [\"<core skills the candidate is strongest in>\"],\n  \"secondarySkills\": [\"<supporting/familiar skills>\"],\n  \"education\": \"<highest relevant degree/institution>\",\n  \"certifications\": [\"<any certifications>\"],\n  \"expectedSalary\": \"<stated salary expectation if mentioned in the CV, else null>\",\n  \"preferredLocation\": \"<stated location preference if mentioned, else null>\",\n  \"remotePreference\": \"<'Remote' | 'Hybrid' | 'On-site' | null if not stated>\",\n  \"summary\": \"<2-3 sentence honest summary of this candidate's overall career profile and strengths>\"\n}\n\nCV_TEXT:\n{{ $json.text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1328,
+        -1168
+      ],
+      "id": "cv-agent-1",
+      "name": "Extract CV 1 Profile",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        -944
+      ],
+      "id": "gemini-cv-1",
+      "name": "Gemini Model (CV1 Parse)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_CREDENTIAL_ID",
+          "name": "Google Gemini (PaLM) API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst raw = item.output || '';\n\nif (!raw) {\n  return [{ json: {\n    name: '', currentRole: '', yearsExperience: 0, field: '',\n    primarySkills: [], secondarySkills: [], education: '',\n    certifications: [], expectedSalary: null, preferredLocation: null,\n    remotePreference: null,\n    summary: 'NODE ERROR - Gemini call failed after retries: ' + JSON.stringify(item.error || item).slice(0, 300)\n  }}];\n}\n\nconst cleaned = raw.replace(/```json|```/g, '').trim();\nlet profile;\ntry {\n  profile = JSON.parse(cleaned);\n} catch (e) {\n  profile = {\n    name: '', currentRole: '', yearsExperience: 0, field: '',\n    primarySkills: [], secondarySkills: [], education: '',\n    certifications: [], expectedSalary: null, preferredLocation: null,\n    remotePreference: null,\n    summary: 'PARSE ERROR - raw AI output: ' + raw.slice(0, 300)\n  };\n}\n\nprofile.fileName = ($('Download CV 1 (Google Drive)').first().binary && $('Download CV 1 (Google Drive)').first().binary.data && $('Download CV 1 (Google Drive)').first().binary.data.fileName) || 'CV 1';\n\nreturn [{ json: profile }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        -1168
+      ],
+      "id": "parse-cv-1",
+      "name": "Parse CV 1 Profile"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-cv1-field",
+              "leftValue": "={{ $('Parse CV 1 Profile').first().json.field }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "cond-cv1-noerror",
+              "leftValue": "={{ $('Parse CV 1 Profile').first().json.summary }}",
+              "rightValue": "ERROR",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            },
+            {
+              "id": "cond-cv2-field",
+              "leftValue": "={{ $('Parse CV 2 Profile').first().json.field }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "cond-cv2-noerror",
+              "leftValue": "={{ $('Parse CV 2 Profile').first().json.summary }}",
+              "rightValue": "ERROR",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2080,
+        -656
+      ],
+      "id": "cv-ok-1",
+      "name": "CV Parsed OK?"
+    },
+    {
+      "parameters": {
+        "errorMessage": "=CV extraction failed — check your Google Drive file IDs and Gemini credentials before re-running. CV1: {{ $('Parse CV 1 Profile').first().json.summary }} | CV2: {{ $('Parse CV 2 Profile').first().json.summary }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        -1856,
+        -576
+      ],
+      "id": "stop-error-1",
+      "name": "Stop: CV Extraction Failed"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "AI Jobs DATA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1466431847,
+          "mode": "list",
+          "cachedResultName": "Jobs Database",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1466431847"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2000,
+        -1792
+      ],
+      "id": "get-jobs-1",
+      "name": "Get Job Rows",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-rank-empty",
+              "leftValue": "={{ $json.rank }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
+            },
+            {
+              "id": "cond-desc-notempty",
+              "leftValue": "={{ $json.description }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1776,
+        -1792
+      ],
+      "id": "filter-unranked-1",
+      "name": "Filter Unranked Jobs"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1632,
+        -768
+      ],
+      "id": "loop-jobs-1",
+      "name": "Loop Over Jobs"
+    },
+    {
+      "parameters": {
+        "amount": 4
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1408,
+        -768
+      ],
+      "id": "wait-1",
+      "name": "Wait Between AI Calls",
+      "webhookId": "390f6180-449d-4b96-be98-75e3914112a1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert technical recruiter and honest career advisor helping ONE candidate decide which jobs are worth applying to. You will be given TWO candidate CVs and one job posting. Compare them carefully and return a rigorous, honest assessment — do not be falsely encouraging.\n\nCV OPTION 1 — file \"{{ $('Parse CV 1 Profile').first().json.fileName }}\":\n{{ JSON.stringify($('Parse CV 1 Profile').first().json) }}\n\nCV OPTION 2 — file \"{{ $('Parse CV 2 Profile').first().json.fileName }}\":\n{{ JSON.stringify($('Parse CV 2 Profile').first().json) }}\n\nJOB_POSTING:\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation: {{ $json.location || \"Not specified\" }}\nRemote: {{ $json.remote || \"Not specified\" }}\nPosted Salary (if any): {{ $json.salary || \"Not specified\" }}\nDescription: {{ $json.description }}\n\nTASK:\n1. Pick whichever CV (OPTION 1 or OPTION 2) is the better fit for THIS job, based on the full job title AND description — not just keyword overlap. Run every step below against the CV you picked; ignore the other one from this point on.\n2. Domain fit: decide if this job is in the SAME field as the chosen CV's background, an ADJACENT/transferable field, or a DIFFERENT field entirely.\n3. Skills/experience comparison: separate genuine BLOCKING gaps (things the candidate fundamentally lacks that can't be picked up quickly — e.g. a required certification/visa/years of experience they don't have) from LEARNABLE gaps (skills missing today but a competent candidate in this field could reasonably pick up within a few weeks of onboarding).\n4. Score fit from 0-100 using roughly: skills match 40%, experience-level match 30%, domain/field fit 20%, location/remote compatibility 10%.\n5. Decide shouldApply as \"Yes\", \"Maybe\", or \"No\". Do NOT rely on the numeric score alone — use judgment. Example: a 55 score with strong domain fit and only learnable gaps can still be \"Yes\". A 75 score with one hard blocking requirement the candidate lacks can be \"No\". As a loose guide, 60+ with no blocking gaps generally means \"Yes\"; real blocking gaps or a different-domain mismatch push it toward \"No\" regardless of score.\n6. Salary recommendation: figure out whether this role is effectively a LOCAL Georgian-market role or an INTERNATIONAL/remote role (use the Remote field, Location, and how the company/description reads — an international remote-friendly company or fully remote posting counts as international). Then:\n   - If LOCAL (Georgia-based, on-site or local hybrid): recommend a realistic salary range using typical Georgian market rates for this role, seniority, and field.\n   - If INTERNATIONAL/remote: recommend a realistic salary range using typical international remote-role rates for this role, seniority, and field.\n   - If the posting already states a salary, compare it against your benchmark and say whether it's below/at/above market.\n   - Clearly state which benchmark you used, and explicitly flag that this is an estimate from general knowledge, not live market data.\n\nRespond ONLY with valid JSON — no markdown code fences, no commentary before or after. Escape any quotation marks inside string values with a backslash.\n\nSchema to follow exactly:\n{\n  \"cvUsed\": \"<exact file name of the CV you picked in step 1, copied exactly from CV OPTION 1 or CV OPTION 2 above>\",\n  \"cvChoiceReasoning\": \"<1 sentence: why this CV fit better than the other for this job>\",\n  \"rank\": <integer 0-100>,\n  \"shouldApply\": \"Yes\" | \"Maybe\" | \"No\",\n  \"domainMatch\": \"Same domain\" | \"Adjacent/transferable\" | \"Different domain\",\n  \"whyFit\": \"<2-3 sentences on why this is or isn't a good match>\",\n  \"blockingGaps\": \"<hard blocking gaps, or 'None'>\",\n  \"learnableGaps\": \"<missing but learnable skills, or 'None'>\",\n  \"salaryRecommendation\": \"<recommended range with currency, e.g. '3500-5000 GEL/month' or '$70k-$90k/year'>\",\n  \"salaryReasoning\": \"<1-2 sentences: which benchmark (Georgian local vs international remote) you used and why, explicitly noted as an estimate>\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1168,
+        -768
+      ],
+      "id": "match-agent-1",
+      "name": "Rank Job Fit",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1088,
+        -544
+      ],
+      "id": "gemini-match-1",
+      "name": "Gemini Model (Job Match)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_CREDENTIAL_ID",
+          "name": "Google Gemini (PaLM) API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst raw = item.output || '';\nconst job = $('Loop Over Jobs').item.json;\nconst analyzedDate = new Date().toISOString().slice(0, 10);\n\nlet result;\n\nif (!raw) {\n  result = {\n    rank: 0, shouldApply: 'Error', domainMatch: 'Error',\n    whyFit: 'Node error - see Errors sheet for details',\n    blockingGaps: '', learnableGaps: '', salaryRecommendation: '',\n    salaryReasoning: 'NODE ERROR after retries: ' + JSON.stringify(item.error || item).slice(0, 500)\n  };\n} else {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  try {\n    result = JSON.parse(cleaned);\n  } catch (e) {\n    result = {\n      rank: 0, shouldApply: 'Error', domainMatch: 'Error',\n      whyFit: 'AI returned invalid JSON - see Errors sheet for details',\n      blockingGaps: '', learnableGaps: '', salaryRecommendation: '',\n      salaryReasoning: 'PARSE ERROR raw output: ' + raw.slice(0, 500)\n    };\n  }\n}\n\nreturn [{ json: { ...job, ...result, analyzedDate } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -816,
+        -768
+      ],
+      "id": "parse-match-1",
+      "name": "Parse Ranking JSON"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -592,
+        -768
+      ],
+      "id": "wait-2",
+      "name": "Wait Before Sheet Write",
+      "webhookId": "33f868ef-ac7e-4d84-98d4-9e2eff89ccf5"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "AI Jobs DATA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1466431847,
+          "mode": "list",
+          "cachedResultName": "Jobs Database",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=1466431847"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_url",
+              "displayName": "company_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "job_type",
+              "displayName": "job_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "is_remote",
+              "displayName": "is_remote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "posted_date",
+              "displayName": "posted_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_min",
+              "displayName": "salary_min",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_max",
+              "displayName": "salary_max",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary_currency",
+              "displayName": "salary_currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "external_apply_url",
+              "displayName": "external_apply_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scraped_at",
+              "displayName": "scraped_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "has_stub_only",
+              "displayName": "has_stub_only",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "#error",
+              "displayName": "#error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "#debug",
+              "displayName": "#debug",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scraper",
+              "displayName": "scraper",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "deadline_date",
+              "displayName": "deadline_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -368,
+        -768
+      ],
+      "id": "write-ranking-1",
+      "name": "Write Ranking to Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-rank-gt-60",
+              "leftValue": "={{ $json.rank }}",
+              "rightValue": 60,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -144,
+        -768
+      ],
+      "id": "rank-over-60-1",
+      "name": "Rank Over 60?"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=📋 Source: {{ $json.source }}\n📅 Date: {{ $json.posted_date }}\n\n💯 Job Score: {{ $json.rank }}\n📌 Title: {{ $json.title }}\n🏢 Company: {{ $json.company }}\n📍 Location: {{ $json.location }}\n\n🔗 Apply Link: {{ $json.url }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        112,
+        -688
+      ],
+      "id": "telegram-alert-1",
+      "name": "Send Telegram Alert",
+      "webhookId": "798913fc-52b2-4248-b4f8-896f48edb3df",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "YOUR_CV_2_DRIVE_FILE_ID",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1776,
+        -1456
+      ],
+      "id": "download-cv2-1",
+      "name": "Download CV 2 (Google Drive)",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1552,
+        -1456
+      ],
+      "id": "extract-cv2-1",
+      "name": "Extract CV 2 Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert resume analyst. Extract a clean, structured profile from the CV text below.\n\nRespond ONLY with valid JSON — no markdown code fences, no commentary before or after. If a field is not present in the CV, use null (or an empty array for list fields). Escape any quotation marks inside string values with a backslash.\n\nSchema to follow exactly:\n{\n  \"name\": \"<candidate full name>\",\n  \"currentRole\": \"<most recent job title>\",\n  \"yearsExperience\": <total years of relevant professional experience, as a number>,\n  \"field\": \"<primary professional field/industry, e.g. 'Software Engineering', 'Marketing', 'Finance'>\",\n  \"primarySkills\": [\"<core skills the candidate is strongest in>\"],\n  \"secondarySkills\": [\"<supporting/familiar skills>\"],\n  \"education\": \"<highest relevant degree/institution>\",\n  \"certifications\": [\"<any certifications>\"],\n  \"expectedSalary\": \"<stated salary expectation if mentioned in the CV, else null>\",\n  \"preferredLocation\": \"<stated location preference if mentioned, else null>\",\n  \"remotePreference\": \"<'Remote' | 'Hybrid' | 'On-site' | null if not stated>\",\n  \"summary\": \"<2-3 sentence honest summary of this candidate's overall career profile and strengths>\"\n}\n\nCV_TEXT:\n{{ $json.text }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1328,
+        -1568
+      ],
+      "id": "cv2-agent-1",
+      "name": "Extract CV 2 Profile"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        -1344
+      ],
+      "id": "gemini-cv2-1",
+      "name": "Gemini Model (CV2 Parse)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_CREDENTIAL_ID",
+          "name": "Google Gemini (PaLM) API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst raw = item.output || '';\n\nif (!raw) {\n  return [{ json: {\n    name: '', currentRole: '', yearsExperience: 0, field: '',\n    primarySkills: [], secondarySkills: [], education: '',\n    certifications: [], expectedSalary: null, preferredLocation: null,\n    remotePreference: null,\n    summary: 'NODE ERROR - Gemini call failed after retries: ' + JSON.stringify(item.error || item).slice(0, 300),\n    fileName: 'CV 2'\n  }}];\n}\n\nconst cleaned = raw.replace(/```json|```/g, '').trim();\nlet profile;\ntry {\n  profile = JSON.parse(cleaned);\n} catch (e) {\n  profile = {\n    name: '', currentRole: '', yearsExperience: 0, field: '',\n    primarySkills: [], secondarySkills: [], education: '',\n    certifications: [], expectedSalary: null, preferredLocation: null,\n    remotePreference: null,\n    summary: 'PARSE ERROR - raw AI output: ' + raw.slice(0, 300)\n  };\n}\n\nprofile.fileName = ($('Download CV 2 (Google Drive)').first().binary && $('Download CV 2 (Google Drive)').first().binary.data && $('Download CV 2 (Google Drive)').first().binary.data.fileName) || 'CV 2';\n\nreturn [{ json: profile }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -976,
+        -1456
+      ],
+      "id": "parse-cv2-1",
+      "name": "Parse CV 2 Profile"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -752,
+        -1248
+      ],
+      "id": "merge-cvs-1",
+      "name": "Both CVs Ready"
+    },
+    {
+      "parameters": {
+        "jsCode": "const seen = new Set();\nconst out = [];\nfor (const item of $input.all()) {\n  const id = item.json.job_id;\n  if (!seen.has(id)) {\n    seen.add(id);\n    out.push(item);\n  }\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1552,
+        -1792
+      ],
+      "id": "dedup-jobid-1",
+      "name": "Deduplicate by Job ID"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        -2000,
+        -1248
+      ],
+      "id": "limit-trigger-1",
+      "name": "Any Jobs? (Trigger CVs)"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $(\"Deduplicate by Job ID\").all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1856,
+        -768
+      ],
+      "id": "load-queue-1",
+      "name": "Load Job Queue"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Get Job Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CV Parsed OK?": {
+      "main": [
+        [
+          {
+            "node": "Load Job Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: CV Extraction Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Rows": {
+      "main": [
+        [
+          {
+            "node": "Filter Unranked Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Unranked Jobs": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate by Job ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Jobs": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Wait Between AI Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Between AI Calls": {
+      "main": [
+        [
+          {
+            "node": "Rank Job Fit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rank Job Fit": {
+      "main": [
+        [
+          {
+            "node": "Parse Ranking JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Model (Job Match)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Rank Job Fit",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Ranking JSON": {
+      "main": [
+        [
+          {
+            "node": "Wait Before Sheet Write",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Sheet Write": {
+      "main": [
+        [
+          {
+            "node": "Write Ranking to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Ranking to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Rank Over 60?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rank Over 60?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Alert": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download CV 1 (Google Drive)": {
+      "main": [
+        [
+          {
+            "node": "Extract CV 1 Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV 1 Text": {
+      "main": [
+        [
+          {
+            "node": "Extract CV 1 Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV 1 Profile": {
+      "main": [
+        [
+          {
+            "node": "Parse CV 1 Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Model (CV1 Parse)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract CV 1 Profile",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CV 1 Profile": {
+      "main": [
+        [
+          {
+            "node": "Both CVs Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download CV 2 (Google Drive)": {
+      "main": [
+        [
+          {
+            "node": "Extract CV 2 Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV 2 Text": {
+      "main": [
+        [
+          {
+            "node": "Extract CV 2 Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CV 2 Profile": {
+      "main": [
+        [
+          {
+            "node": "Parse CV 2 Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Model (CV2 Parse)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract CV 2 Profile",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CV 2 Profile": {
+      "main": [
+        [
+          {
+            "node": "Both CVs Ready",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Both CVs Ready": {
+      "main": [
+        [
+          {
+            "node": "CV Parsed OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate by Job ID": {
+      "main": [
+        [
+          {
+            "node": "Any Jobs? (Trigger CVs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Jobs? (Trigger CVs)": {
+      "main": [
+        [
+          {
+            "node": "Download CV 1 (Google Drive)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download CV 2 (Google Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Job Queue": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "39744f33-9b98-4492-8bcc-126094d2834b",
+  "meta": {
+    "instanceId": "f380a8a022c76f65f94bb32a318b6a019b108f6ad7a5c76cfee2d802fb4379a2"
+  },
+  "nodeGroups": [],
+  "id": "C5oKnpVDu1TWYWxA",
+  "tags": []
+}
