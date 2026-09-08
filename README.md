@@ -1,4 +1,4 @@
-# 🤖 AI Job Hunter — n8n Workflows
+# ✨ AI Dream Job Hunter — n8n Workflows
 
 Automated job-hunting pipeline built on [n8n](https://n8n.io/): it scrapes job listings from multiple sources, keeps them deduplicated in a Google Sheet, then uses Google Gemini to read your CV(s), score every job against your actual profile, and ping you on Telegram the moment a strong match shows up.
 
