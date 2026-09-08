@@ -24,10 +24,20 @@ Job hunting manually across five different sites and re-reading the same posting
 ## 📸 Screenshots
 
 ### Workflow 1 — AI Jobs Scraper
-![AI Jobs Scraper workflow](screenshots/ai-jobs-scraper-workflow.jpg)
+
+<a href="screenshots/ai-jobs-scraper-workflow.jpg"><img src="screenshots/ai-jobs-scraper-workflow.jpg" width="45%" alt="AI Jobs Scraper workflow"></a>
+
+**Result — the Jobs Database sheet, populated automatically:**
+
+<a href="screenshots/jobs-database-sheet.png"><img src="screenshots/jobs-database-sheet.png" width="45%" alt="Jobs Database Google Sheet"></a>
 
 ### Workflow 2 — AI Jobs Ranker & Analyzer
-![AI Jobs Ranker & Analyzer workflow](screenshots/ai-jobs-ranker-analyzer-workflow.jpg)
+
+<a href="screenshots/ai-jobs-ranker-analyzer-workflow.jpg"><img src="screenshots/ai-jobs-ranker-analyzer-workflow.jpg" width="45%" alt="AI Jobs Ranker & Analyzer workflow"></a>
+
+**Result — Telegram alerts for high-scoring matches:**
+
+<a href="screenshots/telegram-alerts.jpg"><img src="screenshots/telegram-alerts.jpg" width="20%" alt="Telegram job alerts"></a>
 
 ---
 
@@ -81,7 +91,9 @@ ai-job-hunter-n8n/
 │   └── AI_Jobs_Ranker_and_Analyzer.json     # Workflow 2 (sanitized export)
 └── screenshots/
     ├── ai-jobs-scraper-workflow.jpg
-    └── ai-jobs-ranker-analyzer-workflow.jpg
+    ├── ai-jobs-ranker-analyzer-workflow.jpg
+    ├── jobs-database-sheet.png
+    └── telegram-alerts.jpg
 ```
 
 ---
